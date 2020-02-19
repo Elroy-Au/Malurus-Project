@@ -27,12 +27,14 @@ library(readxl)
 library(RcppCNPy)     # for reading .npy (NUMPY) files generated in PCAngsd 
 library(sf)           # for reading shapefiles 
 library(readxl)
+library(RColorBrewer)
+library(geosphere)    # to create the distance matrix
 
 # load data
 genetic.matrix <- npyLoad("genetic.matrix.cov.npy") # this file should contain the genetic covariance matrix of all of the unfiltered individuals, n=133
 snp.filtered.genetic.matrix <- npyLoad("genetic.matrix.snp.filtered.cov.npy") # this file should contain the genetic covariance matrix of all the individuals post pca-filtering, n = 119
 clim.filtered.genetic.matrix <- npyLoad("genetic.matrix.clim.filtered.cov.npy") # this file should contain the genetic covariance matrix of all of the individuals post-climate, n = 113
-specimen.data <- read_excel("specimen-metadata.xlsx") # this file should contain the metadata for all of the sampled specimens
+metadata <- read_excel("metadata.xlsx") # this file should contain the metadata for all of the sampled specimens post-PCA filtering, n = 119
 
 # analysis
 # calculate eigenvalues
@@ -54,10 +56,10 @@ PC3 <- PC[,3]
 PCA <- data.frame(PC1, PC2, PC3)
 
 # plot PCA [1] collection state, collection date
-ggplot(specimen.data, aes(x=PC1, y=PC2)) + geom_point(aes(shape = Period, color = STATE), position = "jitter", size = 2.5) + scale_shape_manual(values = c(3, 4, 8, 15, 17, 18, 19, 25)) + theme_bw()
+ggplot(metadata, aes(x=PC1, y=PC2)) + geom_point(aes(shape = Period, color = STATE), position = "jitter", size = 2.5) + scale_shape_manual(values = c(3, 4, 8, 15, 17, 18, 19, 25)) + theme_bw()
 
 # plot PCA [2] collection state, individual missingness
-ggplot (specimen.data, aes(x=PC1, y=PC2)) + geom_point(aes(shape = Period, color = MISSINGNESS), position = "jitter", size = 2.5) + scale_shape_manual(values = c(3, 4, 8, 15, 17, 18, 19, 25)) + scale_color_continuous(high = "black", low = "turquoise2") + theme_bw() 
+ggplot (metadata, aes(x=PC1, y=PC2)) + geom_point(aes(shape = Period, color = MISSINGNESS), position = "jitter", size = 2.5) + scale_shape_manual(values = c(3, 4, 8, 15, 17, 18, 19, 25)) + scale_color_continuous(high = "black", low = "turquoise2") + theme_bw() 
 
 # plot biplot
 # set pch and colour groups (grouped by collection state: NSW, NT, QLD, SA, VIC, WA, NA)
@@ -65,7 +67,7 @@ pch.group <- c(rep(21, times=10), rep(22, times=10), rep(23, times=10), rep(24, 
 # red = NSW, gold = NT, green = QLD, blue = SA, black = VIC, pink = WA, black X = N.A
 col.group <- c(rep("red", times=10), rep("gold", times=10), rep("green", times=10), rep("skyblue2", times=45), rep("black", times=1), rep("violet", times=43))
 # plot the individuals in principal component space 
-plot(x=specimen.data$PC1, y=specimen.data$PC2, xlab="PC1 (3.18%)", ylab="PC2 (1.23%)", xlim=c(-1.0,1.0),ylim=c(-0.6,0.6), pch=pch.group, col="black", bg=col.group, cex=2, las=1, asp=1)
+plot(x=metadata$PC1, y=metadata$PC2, xlab="PC1 (3.18%)", ylab="PC2 (1.23%)", xlim=c(-1.0,1.0),ylim=c(-0.6,0.6), pch=pch.group, col="black", bg=col.group, cex=2, las=1, asp=1)
 # y axis
 abline(v=0, lty=2, col="grey50")
 # x axis
@@ -83,13 +85,13 @@ lo <- which(l.y < 0)
 hi <- which(l.y > 0)
 l.pos <- replace(l.pos, lo, "1")
 l.pos <- replace(l.pos, hi, "3")
-text(l.x, l.y, labels=specimen.data$`SAMPLE ID`, col="red", pos=l.pos)
+text(l.x, l.y, labels=metadata$`SAMPLE ID`, col="red", pos=l.pos)
 
 # plot PCA on a geographic map
 australia <- st_read("australia.shp")
 # set objects
 a <- ggplot() + geom_sf(data = australia, color = "black", fill = "white")
-a + geom_point(data=specimen.data, aes(x=LONGITUDE, y=LATITUDE, color = PC1), size = 2.5) + scale_color_gradient2()
+a + geom_point(data=metadata, aes(x=LONGITUDE, y=LATITUDE, color = PC1), size = 2.5) + scale_color_gradient2()
 ```
 
 ### ================================== ###
@@ -100,23 +102,72 @@ a + geom_point(data=specimen.data, aes(x=LONGITUDE, y=LATITUDE, color = PC1), si
 
 ```{r}
 
-# load libraries
-library(RColorBrewer)
-
 # load new data
-pop <- read.table("admix-pop-data.txt", fill = TRUE, header = FALSE) # this file contains the necessary metadata for ordering individuals via their collection state
-q2 <- read.table("admix.2.txt", fill = TRUE, header = FALSE) # this file should contain the estimated admixture proportions for all individuals when the number of ancestral populations k = 2
-q3 <- read.table("admix.3.txt", fill = TRUE, header = FALSE) # this file should contain the estimated admixture proportions for all individuals when the number of ancestral populations k = 3
-q4 <- read.table("admix.4.txt", fill = TRUE, header = FALSE) # this file should contain the estimated admixture proportions for all individuals when the number of ancestral populations k = 4
-q5 <- read.table("admix.5.txt", fill = TRUE, header = FALSE) # this file should contain the estimated admixture proportions for all individuals when the number of ancestral populations k = 5
-q6 <- read.table("admix.6.txt", fill = TRUE, header = FALSE) # this file should contain the estimated admixture proportions for all individuals when the number of ancestral populations k = 6
+populations <- read.table("admix-pop-data.txt", fill = TRUE, header = FALSE) # this file contains the necessary metadata for ordering individuals via their collection state
+q2 <- read.table("admix.2.txt", fill = TRUE, header = FALSE) # this file should contain the estimated admixture proportions for all individuals when the number of ancestral populations k = 2 for creating admixture barplots
+q3 <- read.table("admix.3.txt", fill = TRUE, header = FALSE) # this file should contain the estimated admixture proportions for all individuals when the number of ancestral populations k = 3 for creating admixture barplots
+q4 <- read.table("admix.4.txt", fill = TRUE, header = FALSE) # this file should contain the estimated admixture proportions for all individuals when the number of ancestral populations k = 4 for creating admixture barplots
+q5 <- read.table("admix.5.txt", fill = TRUE, header = FALSE) # this file should contain the estimated admixture proportions for all individuals when the number of ancestral populations k = 5 for creating admixture barplots
+q6 <- read.table("admix.6.txt", fill = TRUE, header = FALSE) # this file should contain the estimated admixture proportions for all individuals when the number of ancestral populations k = 6 for creating admixture barplots
 # order according to population
-ord <- order (pop[,2])
+ord <- order (populations[,2])
 # plot admixture proportions 
 barplot(t(q6)[,ord],col=brewer.pal(n=6, name="RdBu"), space=0, border=NA, xlab="Individuals", ylab="Admixture Proportions (K=6)")
-# plot admixture proportions on a geographic map 
+# add collection state 
+text(tapply(1:nrow(populations), populations[ord,2], mean),-0.05, unique(populations[ord,2]),xpd=T)
+# add individual lines
+abline(v=cumsum(sapply(unique(populations[ord,1]), function(x){sum(populations[ord,1]==x)})), col="white",lwd=0.5)
+# plot admixture proportions on a geographic map
+Lat <- metadata$LATITUDE
+Long <- metadata$LONGITUDE
+# K = 2
+K1 <- metadata$K2.1
+K2 <- metadata$K2.2
+k2.admix <- data.frame(Lat,Long,K1,K2)
+a + geom_scatterpie(aes(x = Long, y = Lat), data = k2.admix, cols = c("K1", "K2")) + scale_fill_manual(values=c("#F39C12", "#C39BD3", "#82E0AA", "#F7DC6F", "#EC7063", "#85C1E9")) + theme_light()
+# K = 3
+K1 <- metadata$K3.1
+K2 <- metadata$K3.2
+K3 <- metadata$K3.3
+k3.admix <- data.frame(Lat,Long,K1,K2,K3)
+a + geom_scatterpie(aes(x = Long, y = Lat), data = k3.admix, cols = c("K1", "K2", "K3")) + scale_fill_manual(values=c("#F39C12", "#C39BD3", "#82E0AA", "#F7DC6F", "#EC7063", "#85C1E9")) + theme_light()
+# K = 4
+K1 <- metadata$K4.1
+K2 <- metadata$K4.2
+K3 <- metadata$K4.3
+K4 <- metadata$K4.4
+k4.admix <- data.frame(Lat,Long,K1,K2,K3,K4)
+a + geom_scatterpie(aes(x = Long, y = Lat), data = k4.admix, cols = c("K1", "K2", "K3", "K4")) + scale_fill_manual(values=c("#F39C12", "#C39BD3", "#82E0AA", "#F7DC6F", "#EC7063", "#85C1E9")) + theme_light()
+# K = 5
+K1 <- metadata$K5.1
+K2 <- metadata$K5.2
+K3 <- metadata$K5.3
+K4 <- metadata$K5.4
+K5 <- metadata$K5.5
+k5.admix <- data.frame(Lat,Long,K1,K2,K3,K4,K5)
+a + geom_scatterpie(aes(x = Long, y = Lat), data = k5.admix, cols = c("K1", "K2", "K3", "K4", "K5")) + scale_fill_manual(values=c("#F39C12", "#C39BD3", "#82E0AA", "#F7DC6F", "#EC7063", "#85C1E9")) + theme_light()
+# K = 6
+K1 <- metadata$K1
+K2 <- metadata$K2
+K3 <- metadata$K3
+K4 <- metadata$K4
+K5 <- metadata$K5
+K6 <- metadata$K6
+k6.admix <- data.frame(Lat,Long,K1,K2,K3,K4,K5,K6)
+a + geom_scatterpie(aes(x = Long, y = Lat), data = k6.admix, cols = c("K1", "K2", "K3", "K4", "K5", "K6")) + scale_fill_manual(values=c("#F39C12", "#C39BD3", "#82E0AA", "#F7DC6F", "#EC7063", "#85C1E9")) + theme_light()
+```
 
+### ================================== ###
+### CALCULATING A DISTANCE MATRIX      ###
+### ================================== ###
 
+```This is the code used to calculate a pairwise distance matrix between all specimens which will be used in later analyses in order to control for geography```
 
+```{r}
+xy <- data.frame(Long, Lat)
+xy.matrix <- as.matrix(xy)
+# calculate distance matrix using shortest distance between two points in metres 
+distance.matrix <- distm(xy.matrix, fun=distGeo)
+```
 
 
