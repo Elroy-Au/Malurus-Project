@@ -29,6 +29,7 @@ library(sf)           # for reading shapefiles
 library(readxl)
 library(RColorBrewer)
 library(geosphere)    # to create the distance matrix
+library(dplyr)        # for subsetting data
 
 # load data
 genetic.matrix <- npyLoad("genetic.matrix.cov.npy") # this file should contain the genetic covariance matrix of all of the unfiltered individuals, n=133
@@ -170,4 +171,28 @@ xy.matrix <- as.matrix(xy)
 distance.matrix <- distm(xy.matrix, fun=distGeo)
 ```
 
+### ================================== ###
+### EXTRACTING CLIMATE DATA            ###
+### ================================== ###
 
+```This is the code that was used to extract the specimens used in my honours thesis from the larger climate data set```
+
+```{r}
+# load new data 
+climate <- read.csv("climate.csv")
+metadata <- read_excel("metadata.xlsx")
+
+# create a new dataset of the climate variables
+# in this dataset extract from the dateset 'climate' data from the same specimens that have 
+# the same ID as the specimens listed in the 'metadata' sheet 
+climate.subset <- climate[climate$id %in% metadata$ID,]
+# now test to make sure the datasets have the same specimens 
+# are the specimens in the datasheet test in the datasheet metadata
+unique(climate.subset$id) %in% unique(metadata$ID) 
+# are the specimens in the datasheet metadata in the datasheet test 
+unique(metadata$ID) %in% unique(climate.subset$id) 
+# if there are any FALSE values, then we should identify which specimens they are
+# we can do this with this code and put any specimens which are FALSE into a dataframe called 'mismatch'
+mismatch <- unique(metadata$ID) %in% unique(climate.subset$id)
+# now use the dataframe 'mismatch' to explicitly find the specimens which are not in both datasets
+metadata[mismatch == FALSE,]
