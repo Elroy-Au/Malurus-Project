@@ -196,3 +196,21 @@ unique(metadata$ID) %in% unique(climate.subset$id)
 mismatch <- unique(metadata$ID) %in% unique(climate.subset$id)
 # now use the dataframe 'mismatch' to explicitly find the specimens which are not in both datasets
 metadata[mismatch == FALSE,]
+# write the extracted data into a new csv file 
+write.csv(climate.subset,"climate-extracted.csv")
+
+### subsetting random code 
+# creating the dataset so you can extract by date range 
+tmax <- climated.sorted$tmax
+tmin <- climated.sorted$tmin
+rain <- climated.sorted$rain
+vpd <- climated.sorted$vpd
+id <- climated.sorted$id
+date <- climated.sorted$date
+date <- as.Date(date)
+# extracting per sample
+B55501 <- subset(climate.extracted, id == "B55501" & climate.extracted$date >= "1990-01-01" &  climate.extracted$date <= "2009-12-31")
+# extracting per sample
+B55503 <- subset(climate.extracted, id == "B55503" & climate.extracted$date >= "1990-01-01" &  climate.extracted$date <= "2009-12-31")
+# combining into a dataset
+climate.date.extracted <- rbind(B55503,B55501)
